@@ -9,6 +9,8 @@ const userRoutes = require('./routes/userRoutes')
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
+const dotenv = require('dotenv');
+dotenv.config();
 
 const Chat = require('./model/chat');
 const chatController = require('./controller/chatController')
