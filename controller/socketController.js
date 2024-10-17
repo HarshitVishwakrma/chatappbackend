@@ -33,13 +33,8 @@ exports.handleSocket = (io) => {
     socket.on("imageMessage", async (data) => {
       console.log("Received image message:", data);
 
-      // Call the function to handle the file upload
       const message = await onImageMessage(data.chatId, data.message, data.file, data.fileName, data.fileType, io);
 
-      // io.emit("received", {
-      //   newMessage: message,
-      //   chatId: data.chatId,
-      // });
     });
 
     socket.on("disconnect", () => {
@@ -106,34 +101,3 @@ async function onImageMessage(chatId, message, file, fileName, fileType, io) {
 }
 
 
-
-
-
-// async function onImageMessage(chatId, message, file, fileName, fileType) {
-//   try {
-//     const buffer = Buffer.from(file); // Convert ArrayBuffer to Buffer
-
-//     const fileRef = bucket.file(fileName); // Use fileName from client
-//     const stream = fileRef.createWriteStream({
-//       metadata: { contentType: `${fileType}` }, // Adjust MIME type if necessary
-//     });
-
-//     stream.on("error", (err) => console.error(err));
-//     stream.on("finish", () => console.log(`File uploaded: ${fileName}`));
-
-//     stream.end(buffer); // Write file data to Firebase Storage
-
-//     const fileUrl = `https://firebasestorage.googleapis.com/v0/b/chatapplication-fefe7.appspot.com/o/${fileName}?alt=media`
-
-//     const chats = await Chat.findOne({ _id: chatId });
-//     chats.messages = [...chats.messages, {text : message.text, sender : message.sender, fileUrl : fileUrl}];
-//     const response = await chats.save();
-//     console.log(response);
-
-//     const res = {text : message.text, fileUrl : fileUrl}
-//     return res;
-    
-//   } catch (error) {
-//     console.error("File upload error:", error);
-//   }
-// }
