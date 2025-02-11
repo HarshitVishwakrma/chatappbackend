@@ -1,60 +1,81 @@
 const Chat = require("../model/chat");
 const bucket = require("../firebase");
 
-const userSockets = {};
+const userSockets = {}; // Stores userId and corresponding socketId
 
 exports.handleSocket = (io) => {
   io.on("connection", (socket) => {
     const userId = socket.handshake.query.userId;
 
-    userSockets[userId] = socket.id;
+    if (userId) {
+      userSockets[userId] = socket.id;
+      console.log(`User connected: userId=${userId}, socketId=${socket.id}`);
+    } else {
+      console.error("User ID is missing in the connection handshake.");
+      return;
+    }
 
-    console.log(
-      `user with userId : ${userId} connected with socket Id : ${userSockets[userId]}`
-    );
-
-    console.log(socket.id);
     socket.on("message", async (data) => {
-      const message = await onMessage(data.chatId, data.message);
-      io.emit("received", {
-        newMessage: message,
-        chatId: data.chatId,
-      });
+      if (!data.chatId || !data.message) {
+        console.error("Invalid message data:", data);
+        return;
+      }
+
+      try {
+        const message = await onMessage(data.chatId, data.message);
+        io.emit("received", { newMessage: message, chatId: data.chatId });
+      } catch (error) {
+        console.error("Error handling message event:", error);
+      }
     });
 
     socket.on("liveMessage", (data) => {
-      console.log(data);
-      console.log(userSockets[data.to]);
-      io.to(userSockets[data.to]).emit("liveMessageReceived", {
-        message: data.message,
-      });
+      if (data.to && userSockets[data.to]) {
+        io.to(userSockets[data.to]).emit("liveMessageReceived", { message: data.message });
+      } else {
+        console.error(`User with ID ${data.to} is not connected.`);
+      }
     });
 
     socket.on("imageMessage", async (data) => {
-      console.log("Received image message:", data);
+      if (!data.chatId || !data.file || !data.fileName || !data.fileType) {
+        console.error("Invalid image message data:", data);
+        return;
+      }
 
-      const message = await onImageMessage(data.chatId, data.message, data.file, data.fileName, data.fileType, io);
-
+      try {
+        const message = await onImageMessage(data.chatId, data.message, data.file, data.fileName, data.fileType, io);
+        console.log("Image message processed:", message);
+      } catch (error) {
+        console.error("Error handling image message event:", error);
+      }
     });
 
     socket.on("disconnect", () => {
-      console.log(`User disconnected: ${userId}`);
-      delete userSockets[userId]; // Clean up when the user disconnects
+      if (userId && userSockets[userId]) {
+        console.log(`User disconnected: userId=${userId}`);
+        delete userSockets[userId]; // Remove the user from userSockets
+      }
     });
   });
 };
 
-// functions to controll the setup :
-
+// Helper Functions
 async function onMessage(chatId, message) {
   try {
     const chats = await Chat.findOne({ _id: chatId });
-    chats.messages = [...chats.messages, {text : message.text, sender : message.sender}];
+    if (!chats) {
+      console.error("Chat not found for chatId:", chatId);
+      return;
+    }
+
+    chats.messages.push({ text: message.text, sender: message.sender });
     const response = await chats.save();
-    console.log(response);
-    return {text : message.text}
+    console.log("Message saved successfully:", response);
+    return { text: message.text, sender: message.sender, time: new Date() };
   } catch (error) {
-    console.log(error);
+    console.error("Error in onMessage:", error);
+    throw error;
   }
 }
 
@@ -62,9 +83,9 @@ async function onImageMessage(chatId, message, file, fileName, fileType, io) {
   try {
     const buffer = Buffer.from(file); // Convert ArrayBuffer to Buffer
 
-    const fileRef = bucket.file(fileName); // Use fileName from client
+    const fileRef = bucket.file(fileName);
     const stream = fileRef.createWriteStream({
-      metadata: { contentType: fileType }, // Set the MIME type
+      metadata: { contentType: fileType },
     });
 
     stream.on("error", (err) => {
@@ -74,30 +95,27 @@ async function onImageMessage(chatId, message, file, fileName, fileType, io) {
     stream.on("finish", async () => {
       console.log(`File successfully uploaded: ${fileName}`);
 
-      // Generate the public URL for the file
       const fileUrl = `https://firebasestorage.googleapis.com/v0/b/chatapplication-fefe7.appspot.com/o/${encodeURIComponent(fileName)}?alt=media`;
 
-      // Find the chat and update with the new message
       const chats = await Chat.findOne({ _id: chatId });
-      chats.messages.push({ text: message.text, sender: message.sender, fileUrl: fileUrl });
-      const response = await chats.save();
+      if (!chats) {
+        console.error("Chat not found for chatId:", chatId);
+        return;
+      }
 
+      chats.messages.push({ text: message.text || "", sender: message.sender, fileUrl: fileUrl });
+      const response = await chats.save();
       console.log("Chat saved successfully:", response);
 
-      // Prepare the message object
       const res = { text: message.text || "", fileUrl: fileUrl, sender: message.sender, time: new Date() };
 
-      // Emit the message to all clients using io
       io.emit("received", { newMessage: res, chatId: chatId });
-
       return res;
     });
 
-    stream.end(buffer); // Write the buffer to the storage
-
+    stream.end(buffer);
   } catch (error) {
     console.error("Error during file upload:", error);
+    throw error;
   }
 }
-
-
