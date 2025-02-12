@@ -17,7 +17,7 @@ const server = http.createServer(app);
 
 // Configure CORS for Express
 app.use(cors({
-  origin: 'http://localhost:5174',
+  origin: '*',
   credentials: true
 }));
 
@@ -31,7 +31,7 @@ app.use(chatRoutes);
 // Configure Socket.IO with CORS
 const io = socketIo(server, {
   cors: {
-    origin: 'http://localhost:5174',
+    origin: '*',
     credentials: true
   }
 });
